@@ -1,35 +1,132 @@
 {
-  "kind": "DeploymentConfig",
-  "apiVersion": "v1",
-  "metadata": {
-    "name": "artifact-proxy-operator"
+  "apiVersion":"v1",
+  "kind":"Template",
+  "metadata":{
+    "name":"artifact-proxy-operator-template",
+    "annotations":{
+      "tags":"mobile"
+    }
   },
-  "spec": {
-    "template": { 
-      "metadata": {
-        "labels": {
-          "name": "artifact-proxy-operator"
+  "parameters": [
+    {
+      "name": "OPERATOR_IMAGE",
+      "value": "docker.io/philipgough/proxy-operator:test",
+      "description": "The Docker image to use",
+      "required": true
+    },
+    {
+      "name": "OPERATOR_HOSTNAME",
+      "value": "artifact-proxy-operator-myproject.192.168.64.22.nip.io",
+      "description": "The route to be used for the Operator",
+      "required": true
+    }
+  ],
+  "objects":[
+    {
+      "kind":"Service",
+      "apiVersion":"v1",
+      "metadata":{
+        "name":"artifact-proxy-operator",
+        "labels":{
+          "app":"artifact-proxy-operator"
         }
       },
       "spec": {
-        "containers": [
+        "ports": [
           {
-            "name": "artifact-proxy-operator",
-            "image": "pbrookes/artifact-proxy-operator",
-            "env": [
+            "name": "artifact-proxy",
+            "port": 8080,
+            "protocol": "TCP",
+            "targetPort": 8080
+          }
+        ],
+        "selector": {
+          "app": "artifact-proxy-operator"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      },
+      "status": {
+        "loadBalancer": {}
+      }
+    },
+    {
+      "apiVersion": "route.openshift.io/v1",
+      "kind": "Route",
+      "metadata": {
+        "annotations": {},
+        "labels": {
+          "app": "artifact-proxy-operator"
+        },
+        "name": "artifact-proxy-operator"
+      },
+      "spec": {
+        "host": "${OPERATOR_HOSTNAME}",
+        "port": {
+          "targetPort": "artifact-proxy"
+        },
+        "to": {
+          "kind": "Service",
+          "name": "artifact-proxy-operator",
+          "weight": 100
+        },
+        "wildcardPolicy": "None"
+      },
+      "status": {
+        "ingress": [
+          {
+            "conditions": [
               {
-                "name": "NAMESPACE",
-                "valueFrom": {
-                  "fieldRef": {
-                    "fieldPath": "metadata.namespace"
-                  }
-                }
+                "status": "True",
+                "type": "Admitted"
               }
-            ]              
+            ],
+            "host": "${OPERATOR_HOSTNAME}",
+            "routerName": "router",
+            "wildcardPolicy": "None"
           }
         ]
       }
     },
-    "replicas": 1 
-  }
+    {
+      "kind":"DeploymentConfig",
+      "apiVersion":"v1",
+      "metadata":{
+        "name":"artifact-proxy-operator"
+      },
+      "spec":{
+        "template":{
+          "metadata":{
+            "labels":{
+              "name":"artifact-proxy-operator",
+              "app":"artifact-proxy-operator"
+            }
+          },
+          "spec":{
+            "containers":[
+              {
+                "name":"artifact-proxy-operator",
+                "image":"${OPERATOR_IMAGE}",
+                "env":[
+                  {
+                    "name":"NAMESPACE",
+                    "valueFrom":{
+                      "fieldRef":{
+                        "fieldPath":"metadata.namespace"
+                      }
+                    }
+                  },
+                  {
+                    "name": "OPERATOR_HOSTNAME",
+                    "value": "${OPERATOR_HOSTNAME}"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "replicas":1
+      }
+    }
+  ]
 }
