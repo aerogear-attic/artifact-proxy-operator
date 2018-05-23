@@ -1,73 +1,117 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 
-	"k8s.io/client-go/rest"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	apibuildv1 "github.com/openshift/api/build/v1"
-	buildv1 "github.com/openshift/client-go/build/clientset/versioned/typed/build/v1"
+	"github.com/philipgough/artifact-proxy-operator/pkg/jenkins"
+	"github.com/philipgough/artifact-proxy-operator/pkg/openshift"
 )
 
-const (
-	requestURLAnnotation   = "MOBILE_ARTIFACT_DOWNLOAD"
-	provideURLAnnotation   = "MOBILE_ARTIFACT_URL"
-	provideTokenAnnotation = "MOBILE_ARTIFACT_TOKEN"
-)
+var osClient *openshift.OpenShiftClient
+var jenkinsClient *jenkins.JenkinsClient
 
 func main() {
-	config, err := rest.InClusterConfig()
+	var err error
+	jenkinsClient = jenkins.NewJenkinsClient()
+	osClient, err = openshift.NewOpenShiftClient(jenkinsClient)
 	if err != nil {
-		panic(err)
+		log.Fatal("error instantiating OpenShiftClient - error " + err.Error())
+	}
+	go osClient.WatchBuilds()
+	serveHttp()
+}
+
+func serveHttp() {
+	http.HandleFunc("/", handler)
+	listen := os.Getenv("ARTIFACT_PROXY_OPERATOR_SERVICE_PORT")
+	if len(listen) == 0 {
+		listen = ":8080"
+	} else {
+		listen = ":" + listen
+	}
+	err := http.ListenAndServe(listen, nil)
+	if err != nil {
+		log.Fatal("error starting http server")
+	}
+	log.Printf("listening on %s", listen)
+}
+
+func handler(rw http.ResponseWriter, r *http.Request) {
+	isValid, err := validateURLPath(r.URL)
+	if err != nil {
+		http.Error(rw, "error parsing request", http.StatusInternalServerError)
+		return
+	}
+	if !isValid {
+		http.Error(rw, "bad request. route should be called with /<build-id>/download?token=eg-token", http.StatusBadRequest)
+		return
 	}
 
-	buildV1Client, err := buildv1.NewForConfig(config)
+	token, err := parseToken(r.URL)
 	if err != nil {
-		panic(err)
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
 	}
-
-	events, err := buildV1Client.Builds(os.Getenv("NAMESPACE")).Watch(metav1.ListOptions{})
+	splitPath := strings.Split(r.URL.Path, "/")
+	if len(splitPath) < 2 {
+		http.Error(rw, "unable to parse build name from path", http.StatusInternalServerError)
+		return
+	}
+	build, err := osClient.GetBuild(splitPath[1])
 	if err != nil {
-		panic(err)
-	}
-
-	for update := range events.ResultChan() {
-		raw, _ := json.Marshal(update.Object)
-		var build = apibuildv1.Build{}
-		json.Unmarshal(raw, &build)
-		//artifact download url requested
-		if val, ok := build.Annotations[requestURLAnnotation]; ok && val == "true" {
-			//and not provided yet
-			if _, ok := build.Annotations[provideURLAnnotation]; !ok {
-				addURL(&build, buildV1Client)
-				log.Printf("Download requested for %v\n", build.ObjectMeta.Name)
-			} else {
-				log.Printf("Download already provided for %v\n", build.ObjectMeta.Name)
-			}
-		} else {
-			log.Printf("Download not requested for %v\n", build.ObjectMeta.Name)
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(rw, fmt.Sprintf("no resources found for build %s", build.Name), http.StatusNotFound)
+			return
 		}
+		http.Error(rw, fmt.Sprintf("error fetching build %s", build.Name), http.StatusInternalServerError)
+		return
 	}
-}
+	tokenAnnotationVal, ok := build.Annotations[osClient.GetTokenConst()]
+	if tokenAnnotationVal != token || !ok {
+		http.Error(rw, fmt.Sprintf("invalid token provided for build %s", build.Name), http.StatusForbidden)
+		return
+	}
+	artifactUrl, ok := build.Annotations[osClient.GetDownloadConst()]
+	if !ok || artifactUrl == "" {
+		http.Error(rw, "missing annotation on build object", http.StatusInternalServerError)
+		return
+	}
 
-func addURL(build *apibuildv1.Build, client *buildv1.BuildV1Client) {
-	build.Annotations[provideURLAnnotation] = generateURL()
-	build.Annotations[provideTokenAnnotation] = generateToken()
-	build, err := client.Builds(os.Getenv("NAMESPACE")).Update(build)
+	artifactStreamer, err := jenkinsClient.StreamArtifact(artifactUrl, osClient.AuthToken)
 	if err != nil {
-		log.Printf("err: %+v\n", err)
+		fmt.Println("Error when streaming atifact " + err.Error())
+		return
 	}
-
+	defer func() {
+		if err := artifactStreamer.Close(); err != nil {
+			fmt.Printf("error. failed to close file handle. could be leaking resources %s", err)
+		}
+	}()
+	rw.Header().Set("content-type", "octet/stream")
+	rw.Header().Set("content-disposition", "attachment; filename=\"app.apk\"")
+	if _, err := io.Copy(rw, artifactStreamer); err != nil {
+		fmt.Println("error writing download of application binary")
+		return
+	}
 }
 
-func generateToken() string {
-	return "the token"
+func parseToken(url *url.URL) (string, error) {
+	token, ok := url.Query()["token"]
+
+	if !ok || len(token) != 1 {
+		return "", errors.New("invalid request, missing token")
+	}
+	return token[0], nil
 }
 
-func generateURL() string {
-	return "the url"
+func validateURLPath(url *url.URL) (bool, error) {
+	return regexp.MatchString("/.*/download", url.Path)
 }
