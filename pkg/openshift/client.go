@@ -82,8 +82,13 @@ func (c *OpenShiftClient) addAnnotations(build *apibuildv1.Build) {
 		return
 	}
 	build.Annotations[JenkinsArtifactUri] = build.Annotations[JenkinsBuildUri] + "artifact/" + buildDetails.Artifacts[0].RelativePath
-	build.Annotations[ArtifactDownloadToken] = build.Name + "-" + strconv.FormatInt(buildDetails.Timestamp, 10)
-	build.Annotations[DownloadProxyUri] = "test"
+	token := build.Name + "-" + strconv.FormatInt(buildDetails.Timestamp, 10)
+	build.Annotations[ArtifactDownloadToken] = token
+	operatorHost := os.Getenv("OPERATOR_HOSTNAME")
+	if operatorHost == "" {
+		log.Println("no hostname available to set annotation")
+	}
+	build.Annotations[DownloadProxyUri] = "http://" + operatorHost + "/" + build.Name + "/download?token=" + token
 	_, err = c.BuildClient.Builds(os.Getenv("NAMESPACE")).Update(build)
 	if err != nil {
 		log.Println("error " + err.Error() + " while updating build annotations for build " + build.Name)

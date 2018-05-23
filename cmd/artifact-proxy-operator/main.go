@@ -68,7 +68,7 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 	build, err := osClient.GetBuild(splitPath[1])
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			http.Error(rw, fmt.Sprintf("no resources found for build %s", build.Name), http.StatusNotFound)
+			http.Error(rw, fmt.Sprintf("no resources found for build %s", splitPath[1]), http.StatusNotFound)
 			return
 		}
 		http.Error(rw, fmt.Sprintf("error fetching build %s", build.Name), http.StatusInternalServerError)
@@ -87,7 +87,7 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 
 	artifactStreamer, err := jenkinsClient.StreamArtifact(artifactUrl, osClient.AuthToken)
 	if err != nil {
-		fmt.Println("Error when streaming atifact " + err.Error())
+		http.Error(rw, "error when streaming atifact", http.StatusInternalServerError)
 		return
 	}
 	defer func() {
