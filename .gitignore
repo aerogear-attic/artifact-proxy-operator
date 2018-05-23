@@ -105,5 +105,11 @@ tags
 !.vscode/extensions.json
 .history
 
+### Goland
+.idea/
+
 
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
+
+### Binary
+artifact-proxy-operator
