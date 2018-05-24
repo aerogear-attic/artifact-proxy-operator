@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/philbrookes/artifact-proxy-operator/pkg/jenkins"
-	"github.com/philbrookes/artifact-proxy-operator/pkg/openshift"
+	"github.com/aerogear/artifact-proxy-operator/pkg/jenkins"
+	"github.com/aerogear/artifact-proxy-operator/pkg/openshift"
 )
 
 var osClient *openshift.OpenShiftClient

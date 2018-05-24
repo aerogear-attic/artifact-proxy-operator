@@ -8,9 +8,9 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/aerogear/artifact-proxy-operator/pkg/jenkins"
 	apibuildv1 "github.com/openshift/api/build/v1"
 	buildv1 "github.com/openshift/client-go/build/clientset/versioned/typed/build/v1"
-	"github.com/philbrookes/artifact-proxy-operator/pkg/jenkins"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 )
