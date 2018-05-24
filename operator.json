@@ -10,13 +10,13 @@
   "parameters": [
     {
       "name": "OPERATOR_IMAGE",
-      "value": "docker.io/philipgough/proxy-operator:test",
+      "value": "docker.io/pbrookes/artifact-proxy-operator:latest",
       "description": "The Docker image to use",
       "required": true
     },
     {
       "name": "OPERATOR_HOSTNAME",
-      "value": "artifact-proxy-operator-myproject.192.168.64.22.nip.io",
+      "value": "artifact-proxy-operator-myproject.192.168.42.77.nip.io",
       "description": "The route to be used for the Operator",
       "required": true
     }
@@ -103,6 +103,7 @@
             }
           },
           "spec":{
+            "serviceAccount": "jenkins",
             "containers":[
               {
                 "name":"artifact-proxy-operator",
