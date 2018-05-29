@@ -39,7 +39,7 @@ func serveHttp() {
 	}
 	err := http.ListenAndServe(listen, nil)
 	if err != nil {
-		log.Fatal("error starting http server")
+		log.Fatalf("error starting http server on %s, (%s)", listen, err.Error())
 	}
 	log.Printf("listening on %s", listen)
 }
