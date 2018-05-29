@@ -16,26 +16,45 @@ import (
 )
 
 const (
+	BuildConfig             = "openshift.io/build-config.name"
 	JenkinsBuildUri         = "openshift.io/jenkins-build-uri"
 	WatchResourceAnnotation = "aerogear.org/download-mobile-artifact"
 	JenkinsArtifactUri      = "aerogear.org/jenkins-mobile-artifact-url"
 	DownloadProxyUri        = "aerogear.org/download-mobile-artifact-url"
 	ArtifactDownloadToken   = "aerogear.org/mobile-artifact-token"
+	BuildType               = "mobile-client-type"
 )
 
 type OpenShiftClient struct {
 	AuthToken     string
 	BuildClient   *buildv1.BuildV1Client
 	JenkinsClient *jenkins.JenkinsClient
+	namespace     string
 }
 
 func (c *OpenShiftClient) GetBuild(build string) (*apibuildv1.Build, error) {
 	log.Printf("getting build info for build - " + build)
-	b, err := c.BuildClient.Builds(os.Getenv("NAMESPACE")).Get(build, metav1.GetOptions{})
+	b, err := c.BuildClient.Builds(c.namespace).Get(build, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 	return b, err
+}
+
+func (c *OpenShiftClient) GetBuildType(build *apibuildv1.Build) (string, error) {
+	bc, ok := build.Annotations[BuildConfig]
+	if !ok {
+		return "", errors.New("unable to get build config info for " + build.Name)
+	}
+	b, err := c.BuildClient.BuildConfigs(c.namespace).Get(bc, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	buildType, ok := b.Labels[BuildType]
+	if !ok {
+		return "", errors.New("unable to get type for build config " + build.Name)
+	}
+	return buildType, nil
 }
 
 func (c *OpenShiftClient) GetDownloadConst() string {
@@ -47,7 +66,7 @@ func (c *OpenShiftClient) GetTokenConst() string {
 }
 
 func (c *OpenShiftClient) WatchBuilds() {
-	events, err := c.BuildClient.Builds(os.Getenv("NAMESPACE")).Watch(metav1.ListOptions{})
+	events, err := c.BuildClient.Builds(c.namespace).Watch(metav1.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -96,26 +115,22 @@ func (c *OpenShiftClient) addAnnotations(build *apibuildv1.Build) {
 
 }
 
-func GetBuildClient() (*buildv1.BuildV1Client, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err)
-	}
-
-	return buildv1.NewForConfig(config)
-}
-
 func NewOpenShiftClient(jc *jenkins.JenkinsClient) (*OpenShiftClient, error) {
 	token, err := getAuthToken()
 	if err != nil {
 		return nil, err
 	}
 
-	buildClient, err := GetBuildClient()
+	buildClient, err := getBuildClient()
 	if err != nil {
 		return nil, err
 	}
-	return &OpenShiftClient{token, buildClient, jc}, nil
+
+	ns := os.Getenv("NAMESPACE")
+	if ns == "" {
+		return nil, errors.New("cannot create OpenShift client. no namespace present")
+	}
+	return &OpenShiftClient{token, buildClient, jc, ns}, nil
 }
 
 func getAuthToken() (string, error) {
@@ -124,4 +139,13 @@ func getAuthToken() (string, error) {
 		return "", errors.New("error reading service account token " + err.Error())
 	}
 	return string(b), nil // convert content to a 'string'
+}
+
+func getBuildClient() (*buildv1.BuildV1Client, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	return buildv1.NewForConfig(config)
 }
