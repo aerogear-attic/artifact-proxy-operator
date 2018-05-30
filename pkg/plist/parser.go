@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 )
 
+//ModifyXML returns the XML with the value of key changed to newValue
 func ModifyXML(r io.Reader, key string, newValue string) (io.ReadWriter, error) {
 	buf, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -89,7 +89,6 @@ Outer:
 
 func decodeElement(d *xml.Decoder, into *string, se *xml.StartElement) error {
 	if err := d.DecodeElement(into, se); err != nil {
-		fmt.Println("failed to decoding element " + se.Name.Local)
 		return errors.New("error parsing xml element")
 	}
 	return nil
@@ -97,7 +96,6 @@ func decodeElement(d *xml.Decoder, into *string, se *xml.StartElement) error {
 
 func encodeElement(e *xml.Encoder, value interface{}, se xml.StartElement) error {
 	if err := e.EncodeElement(value, se); err != nil {
-		fmt.Println("failed to encode element " + se.Name.Local)
 		return errors.New("error writing parsed xml node")
 	}
 	return nil
@@ -105,7 +103,6 @@ func encodeElement(e *xml.Encoder, value interface{}, se xml.StartElement) error
 
 func encodeToken(e *xml.Encoder, t xml.Token) error {
 	if err := e.EncodeToken(t); err != nil {
-		fmt.Println("failed to encode token")
 		return errors.New("error writing parsed xml node")
 	}
 	return nil
