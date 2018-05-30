@@ -39,6 +39,6 @@ test-coveralls:
 test-html:
 	echo "mode: count" > coverage-all.out
 	$(foreach test_dir,$(addprefix $(PKG)/,$(TEST_DIRS)),\
-		go test -coverprofile=coverage.out -covermode=count $(test_dir);\
+		go test -coverprofile=coverage.out -covermode=count PWD)/$(test_dir);\
 		tail -n +2 coverage.out >> coverage-all.out;)
 	go tool cover -html=coverage-all.out
