@@ -2,6 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/philbrookes/artifact-proxy-operator)](https://goreportcard.com/report/github.com/philbrookes/artifact-proxy-operator)
 [![CircleCI](https://circleci.com/gh/philbrookes/artifact-proxy-operator.svg?style=svg)](https://circleci.com/gh/philbrookes/artifact-proxy-operator)
+[![Coverage Status](https://coveralls.io/repos/github/aerogear/artifact-proxy-operator/badge.svg?branch=coverage-report)](https://coveralls.io/github/aerogear/artifact-proxy-operator?branch=coverage-report)
 
 *Note* Just a POC at the moment
 ## Usage
