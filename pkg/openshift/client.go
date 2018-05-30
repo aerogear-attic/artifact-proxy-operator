@@ -107,7 +107,7 @@ func (c *OpenShiftClient) addAnnotations(build *apibuildv1.Build) {
 	if operatorHost == "" {
 		log.Println("no hostname available to set annotation")
 	}
-	build.Annotations[DownloadProxyUri] = "http://" + operatorHost + "/" + build.Name + "/download?token=" + token
+	build.Annotations[DownloadProxyUri] = "https://" + operatorHost + "/" + build.Name + "/download?token=" + token
 	_, err = c.BuildClient.Builds(os.Getenv("NAMESPACE")).Update(build)
 	if err != nil {
 		log.Println("error " + err.Error() + " while updating build annotations for build " + build.Name)
