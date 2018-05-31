@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/aerogear/artifact-proxy-operator/pkg/jenkins"
 	apibuildv1 "github.com/openshift/api/build/v1"
@@ -23,6 +24,8 @@ const (
 	DownloadProxyUri        = "aerogear.org/download-mobile-artifact-url"
 	ArtifactDownloadToken   = "aerogear.org/mobile-artifact-token"
 	BuildType               = "mobile-client-type"
+	AndroidExtension        = ".apk"
+	IosExtenstion           = ".ipa"
 )
 
 type OpenShiftClient struct {
@@ -30,6 +33,15 @@ type OpenShiftClient struct {
 	BuildClient   *buildv1.BuildV1Client
 	JenkinsClient *jenkins.JenkinsClient
 	namespace     string
+	operatorHost  string
+}
+
+func (c *OpenShiftClient) GenerateArtifactUrl(buildName string, token string, artifact bool) string {
+	url := "https://" + c.operatorHost + "/" + buildName + "/download?token=" + token
+	if artifact {
+		url += "&amp;artifact=true"
+	}
+	return url
 }
 
 func (c *OpenShiftClient) GetBuild(build string) (*apibuildv1.Build, error) {
@@ -100,15 +112,41 @@ func (c *OpenShiftClient) addAnnotations(build *apibuildv1.Build) {
 		log.Println("no artifact information available for build " + build.Name)
 		return
 	}
-	build.Annotations[JenkinsArtifactUri] = build.Annotations[JenkinsBuildUri] + "artifact/" + buildDetails.Artifacts[0].RelativePath
+
+	var buildType string
+	var binArtifact jenkins.Artifact
+	for _, artifact := range buildDetails.Artifacts {
+		if strings.Contains(artifact.RelativePath, AndroidExtension) {
+			buildType = "android"
+			binArtifact = artifact
+			break
+		}
+		if strings.Contains(artifact.RelativePath, IosExtenstion) {
+			buildType = "ios"
+			binArtifact = artifact
+			break
+		}
+	}
+	if buildType == "" {
+		if len(buildDetails.Artifacts) != 1 {
+			log.Printf("can not accurately determine artifact for build %s\n", build.Name)
+			return
+		}
+		binArtifact = buildDetails.Artifacts[0]
+		log.Printf("unable to determine build type for build %s from artifact\n", build.Name)
+		buildType, err = c.GetBuildType(build)
+		if err != nil {
+			log.Printf("no build type found for %s. required annotations can't be added\n", build.Name)
+			return
+		}
+	}
+
+	build.Annotations[JenkinsArtifactUri] = build.Annotations[JenkinsBuildUri] + "artifact/" + binArtifact.RelativePath
 	token := build.Name + "-" + strconv.FormatInt(buildDetails.Timestamp, 10)
 	build.Annotations[ArtifactDownloadToken] = token
-	operatorHost := os.Getenv("OPERATOR_HOSTNAME")
-	if operatorHost == "" {
-		log.Println("no hostname available to set annotation")
-	}
-	build.Annotations[DownloadProxyUri] = "https://" + operatorHost + "/" + build.Name + "/download?token=" + token
-	_, err = c.BuildClient.Builds(os.Getenv("NAMESPACE")).Update(build)
+	build.Annotations[DownloadProxyUri] = c.GenerateArtifactUrl(build.Name, token, buildType == "android")
+
+	_, err = c.BuildClient.Builds(c.namespace).Update(build)
 	if err != nil {
 		log.Println("error " + err.Error() + " while updating build annotations for build " + build.Name)
 	}
@@ -130,7 +168,13 @@ func NewOpenShiftClient(jc *jenkins.JenkinsClient) (*OpenShiftClient, error) {
 	if ns == "" {
 		return nil, errors.New("cannot create OpenShift client. no namespace present")
 	}
-	return &OpenShiftClient{token, buildClient, jc, ns}, nil
+
+	operatorHost := os.Getenv("OPERATOR_HOSTNAME")
+	if operatorHost == "" {
+		return nil, errors.New("no hostname available to set required annotations")
+
+	}
+	return &OpenShiftClient{token, buildClient, jc, ns, operatorHost}, nil
 }
 
 func getAuthToken() (string, error) {
