@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -97,12 +96,16 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 	}
 	switch buildType {
 	case "android":
-		handleBinaryResponse(rw, artifactUrl, "apk")
+		handleBinaryResponse(rw, artifactUrl, fmt.Sprintf("%s.apk", build.Name))
+		return
 	case "ios":
 		if isArtifactRequest(r.URL) {
-			handleBinaryResponse(rw, artifactUrl, "ipa")
+			handleBinaryResponse(rw, artifactUrl, fmt.Sprintf("%s.ipa", build.Name))
+			return
 		}
-		handleXmlResponse(rw)
+		xmlResp := plist.ProduceXML(osClient.GenerateArtifactUrl(build.Name, token, true))
+		rw.Header().Set("content-type", "text/xml")
+		rw.Write([]byte(xmlResp))
 	default:
 		http.Error(rw, fmt.Sprintf("invalid build type found for build %s", build), http.StatusBadRequest)
 		return
@@ -122,19 +125,11 @@ func handleBinaryResponse(rw http.ResponseWriter, artifactUrl string, extension 
 		}
 	}()
 	rw.Header().Set("content-type", "octet/stream")
-	rw.Header().Set("content-disposition", fmt.Sprintf("attachment; filename=\"app.%s\"", extension))
+	rw.Header().Set("content-disposition", fmt.Sprintf("attachment; filename=\"%s\"", extension))
 	if _, err := io.Copy(rw, artifactStreamer); err != nil {
 		fmt.Println("error writing download of application binary")
 		return
 	}
-}
-
-func handleXmlResponse(rw http.ResponseWriter) {
-	// TODO Get plist artifact from jenkins and read its contents
-	// Get the proxy url for this build which will just be existing plist url via proxy
-	// with ?artifact=true appended as query param
-	plist.ModifyXML(bytes.NewBuffer([]byte{}), "url", "https://proxy-url-placeholder")
-	rw.Header().Set("content-type", "text/xml")
 }
 
 func parseToken(url *url.URL) (string, error) {
