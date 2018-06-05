@@ -100,6 +100,7 @@ func (c *OpenShiftClient) WatchBuilds() {
 			log.Printf("Download not requested for %v\n", build.ObjectMeta.Name)
 		}
 	}
+	log.Printf("watch exited")
 }
 
 func (c *OpenShiftClient) addAnnotations(build *apibuildv1.Build) {
