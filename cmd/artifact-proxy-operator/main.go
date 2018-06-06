@@ -103,9 +103,15 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 			handleBinaryResponse(rw, artifactUrl, fmt.Sprintf("%s.ipa", build.Name))
 			return
 		}
-		xmlResp := plist.ProduceXML(osClient.GenerateArtifactUrl(build.Name, token, true))
-		rw.Header().Set("content-type", "text/xml")
-		rw.Write([]byte(xmlResp))
+		if isPlistRequest(r.URL) {
+			xmlResp := plist.ProduceXML(osClient.GenerateArtifactUrl(build.Name, token, true), build.Name)
+			rw.Header().Set("content-type", "application/xml")
+			rw.Write([]byte(xmlResp))
+			return
+		}
+		htmlResp := plist.ProduceHTML(encodeItmsUrl(r.URL))
+		rw.Header().Set("content-type", "text/html")
+		rw.Write([]byte(htmlResp))
 	default:
 		http.Error(rw, fmt.Sprintf("invalid build type found for build %s", build), http.StatusBadRequest)
 		return
@@ -132,6 +138,19 @@ func handleBinaryResponse(rw http.ResponseWriter, artifactUrl string, extension 
 	}
 }
 
+func encodeItmsUrl(toEncode *url.URL) string {
+	var directTo *url.URL
+	directTo, _ = url.Parse("https://" + os.Getenv("OPERATOR_HOSTNAME"))
+	directTo.Path = toEncode.Path
+	params := url.Values{}
+	for k, v := range toEncode.Query() {
+		params.Add(k, v[0])
+	}
+	params.Add("plist", "true")
+	directTo.RawQuery = params.Encode()
+	return directTo.String()
+}
+
 func parseToken(url *url.URL) (string, error) {
 	token, ok := url.Query()["token"]
 
@@ -147,4 +166,8 @@ func validateURLPath(url *url.URL) (bool, error) {
 
 func isArtifactRequest(url *url.URL) bool {
 	return url.Query().Get("artifact") == "true"
+}
+
+func isPlistRequest(url *url.URL) bool {
+	return url.Query().Get("plist") == "true"
 }
