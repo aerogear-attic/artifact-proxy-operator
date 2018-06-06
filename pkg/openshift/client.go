@@ -78,27 +78,30 @@ func (c *OpenShiftClient) GetTokenConst() string {
 }
 
 func (c *OpenShiftClient) WatchBuilds() {
-	events, err := c.BuildClient.Builds(c.namespace).Watch(metav1.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
-
-	for update := range events.ResultChan() {
-		raw, _ := json.Marshal(update.Object)
-		var build = apibuildv1.Build{}
-		json.Unmarshal(raw, &build)
-		//artifact download url requested
-		if val, ok := build.Annotations[WatchResourceAnnotation]; ok && val == "true" {
-			//and not provided yet
-			if _, ok := build.Annotations[JenkinsArtifactUri]; !ok {
-				c.addAnnotations(&build)
-				log.Printf("Download requested for %v\n", build.ObjectMeta.Name)
-			} else {
-				log.Printf("Download already provided for %v\n", build.ObjectMeta.Name)
-			}
-		} else {
-			log.Printf("Download not requested for %v\n", build.ObjectMeta.Name)
+	for {
+		log.Printf("Connecting build watcher")
+		events, err := c.BuildClient.Builds(c.namespace).Watch(metav1.ListOptions{})
+		if err != nil {
+			panic(err)
 		}
+		for update := range events.ResultChan() {
+			raw, _ := json.Marshal(update.Object)
+			var build = apibuildv1.Build{}
+			json.Unmarshal(raw, &build)
+			//artifact download url requested
+			if val, ok := build.Annotations[WatchResourceAnnotation]; ok && val == "true" {
+				//and not provided yet
+				if _, ok := build.Annotations[JenkinsArtifactUri]; !ok {
+					c.addAnnotations(&build)
+					log.Printf("Download requested for %v\n", build.ObjectMeta.Name)
+				} else {
+					log.Printf("Download already provided for %v\n", build.ObjectMeta.Name)
+				}
+			} else {
+				log.Printf("Download not requested for %v\n", build.ObjectMeta.Name)
+			}
+		}
+		log.Printf("watch disconnected")
 	}
 }
 
